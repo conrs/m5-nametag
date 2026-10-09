@@ -1,0 +1,6 @@
+# Personal settings
+config.local.h
+
+# Build output
+build/
+.DS_Store
