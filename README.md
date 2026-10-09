@@ -2,6 +2,11 @@
 
 A wearable nametag for the round **M5Stack StopWatch** (ESP32-S3, 468×468 screen).
 
+<p align="center">
+  <img src="images/name.gif" alt="Name screen with audio-reactive rainbow ring" width="360">
+  <img src="images/qr.gif" alt="QR code screen with audio-reactive rainbow ring" width="360">
+</p>
+
 - **Name screen:** your name, scaled as large as fits the round display.
 - **QR screen:** a QR code for any link, such as your LinkedIn profile.
 - **Tap** the screen to switch between them.
