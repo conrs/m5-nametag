@@ -29,7 +29,7 @@ Built and tested on the [M5Stack StopWatch](https://docs.m5stack.com/). It uses 
    ```
 3. Clone this repo:
    ```
-   git clone https://github.com/<you>/m5-nametag.git
+   git clone https://github.com/conrs/m5-nametag.git
    cd m5-nametag
    ```
 
