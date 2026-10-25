@@ -89,13 +89,15 @@ void render() {
 
 void updateRing() {
   if (!micOk) return;
-  if (!M5.Mic.record(samples, SAMPLES, SAMPLE_RATE)) return;
-  // Wait for the recording, but never hang if the mic stalls.
-  uint32_t start = millis();
-  while (M5.Mic.isRecording()) {
-    if (millis() - start > 100) return;
-    delay(1);
+  // The mic records in the background. Until the current chunk is done, return
+  // straight away so touch and tilt keep being checked.
+  static bool started = false;
+  if (M5.Mic.isRecording()) return;
+  if (!started) {
+    started = M5.Mic.record(samples, SAMPLES, SAMPLE_RATE);
+    return;
   }
+  started = false;
 
   // Loudness of each chunk of the buffer, one chunk per segment.
   const int per = SAMPLES / SEGMENTS;
@@ -116,11 +118,20 @@ void updateRing() {
   auto& d = M5.Display;
   int maxLen = ringOuter - ringInner;
   float segAngle = 360.0f / SEGMENTS;
-  // Batch all drawing into one screen transaction instead of one per bar.
-  d.startWrite();
   for (int i = 0; i < SEGMENTS; i++) {
     float v = min(rms[i] / peak, 1.0f);
     level[i] = max(v, level[i] * 0.85f);  // fast attack, smooth decay
+  }
+
+  // Drawing bars is slow, so spend at most 20 ms on it per pass and carry on
+  // from the same bar next time. This keeps taps from being missed.
+  static int nextSeg = 0;
+  uint32_t drawStart = millis();
+  // Batch all drawing into one screen transaction instead of one per bar.
+  d.startWrite();
+  for (int n = 0; n < SEGMENTS && millis() - drawStart < 20; n++) {
+    int i = nextSeg;
+    nextSeg = (nextSeg + 1) % SEGMENTS;
     int len = max(2, (int)(level[i] * maxLen));
     // Skip tiny changes; they aren't visible and cost screen bandwidth.
     if (len == drawnLen[i] || (abs(len - drawnLen[i]) < 4 && len != 2)) continue;
@@ -156,6 +167,8 @@ void updateOrientation() {
 }
 
 void setup() {
+  // 80 MHz is plenty for the mic and ring, and saves battery over the default 240 MHz.
+  setCpuFrequencyMhz(80);
   Serial.begin(115200);
   auto cfg = M5.config();
   M5.begin(cfg);
@@ -206,15 +219,17 @@ void loop() {
   M5.update();
 
   // Hold a finger on the screen (or the button) for 3 seconds to power off.
+  // Any shorter press counts as a tap, even if it was slow or the finger slid a little.
   static uint32_t pressStart = 0;
   bool pressed = (M5.Touch.isEnabled() && M5.Touch.getCount() > 0) || M5.BtnA.isPressed();
-  if (!pressed) pressStart = 0;
-  else if (pressStart == 0) pressStart = millis();
-  else if (millis() - pressStart > 3000) powerOff();
-
   bool tapped = false;
-  if (M5.Touch.isEnabled() && M5.Touch.getDetail().wasClicked()) tapped = true;
-  if (M5.BtnA.wasClicked()) tapped = true;
+  if (pressed) {
+    if (pressStart == 0) pressStart = millis();
+    else if (millis() - pressStart > 3000) powerOff();
+  } else if (pressStart != 0) {
+    tapped = true;
+    pressStart = 0;
+  }
   if (tapped) {
     view = 1 - view;
     render();
@@ -222,4 +237,12 @@ void loop() {
 
   updateOrientation();
   updateRing();
+
+  // Report battery status over serial every 5 seconds.
+  static uint32_t lastBatt = 0;
+  if (millis() - lastBatt > 5000) {
+    lastBatt = millis();
+    Serial.printf("battery: %d%%  %dmV  charging=%d\n", (int)M5.Power.getBatteryLevel(),
+                  (int)M5.Power.getBatteryVoltage(), (int)M5.Power.isCharging());
+  }
 }
